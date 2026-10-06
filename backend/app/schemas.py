@@ -1,0 +1,66 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=2, max_length=50)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class EventCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=160)
+    description: str = Field(min_length=1, max_length=10000)
+    location: str = Field(min_length=2, max_length=200)
+    start_time: datetime
+    end_time: datetime
+    capacity: int = Field(gt=0, le=100000)
+
+    @model_validator(mode="after")
+    def end_after_start(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("End time must be after start time")
+        return self
+
+
+class EventUpdate(EventCreate):
+    pass
+
+
+class EventPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    description: str
+    location: str
+    start_time: datetime
+    end_time: datetime
+    capacity: int
+    created_at: datetime
+    organizer_id: int
+    organizer: UserPublic
+    attendee_count: int
+
+
+class MyEvents(BaseModel):
+    attending: list[EventPublic]
+    organized: list[EventPublic]

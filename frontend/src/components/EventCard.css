@@ -1,0 +1,5 @@
+.event-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.event-actions button{border:1px solid #dce5dd;border-radius:5px;background:#fff;color:#28644e;padding:6px 10px;font-size:10px;font-weight:700;cursor:pointer}
+.event-actions button:hover{background:#edf3ee}
+.event-actions .delete-action{color:#984a37;border-color:#eedbd5}
+.event-actions .delete-action:hover{background:#fbefeb}
