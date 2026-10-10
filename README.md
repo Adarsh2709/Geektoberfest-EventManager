@@ -87,6 +87,6 @@ Vite serves the app at <http://localhost:5173>. The frontend uses `http://localh
 
 ## Contributing
 
-First contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and see [GOOD_FIRST_ISSUES.md](GOOD_FIRST_ISSUES.md) for ideas. Bug reports and feature suggestions can use the templates in `.github/ISSUE_TEMPLATE/`.
+First contributions are welcome.Bug reports and feature suggestions can use the templates in `.github/ISSUE_TEMPLATE/`.
 
 This project is intentionally a small MVP. Payments, notifications, external sign-in, and other larger ideas are left for future contributions.
