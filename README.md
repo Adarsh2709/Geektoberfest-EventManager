@@ -2,6 +2,12 @@
 
 A simple event creation and registration platform built with FastAPI, PostgreSQL, SQLAlchemy, and React. Event Hub is a small open-source starter intended to be easy to run, read, and improve.
 
+## 🌐 Live Demo
+
+- **Frontend:** https://doc-vault-lac.vercel.app
+- **Backend API:** https://docvault-backend-iv5x.onrender.com
+- **API Documentation:** https://docvault-backend-iv5x.onrender.com/docs
+
 ## Features
 
 - Create an account, log in, and log out with JWT authentication
