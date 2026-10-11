@@ -38,6 +38,9 @@ class Event(Base):
     registrations: Mapped[list["EventRegistration"]] = relationship(
         back_populates="event", cascade="all, delete-orphan"
     )
+    waitlist: Mapped[list["WaitlistEntry"]] = relationship(
+        back_populates="event", cascade="all, delete-orphan", order_by="WaitlistEntry.id"
+    )
 
 
 class EventRegistration(Base):
@@ -51,3 +54,29 @@ class EventRegistration(Base):
 
     event: Mapped[Event] = relationship(back_populates="registrations")
     user: Mapped[User] = relationship(back_populates="registrations")
+
+
+class WaitlistEntry(Base):
+    """A queued request for a spot in a full event. Queue order is the primary key order."""
+
+    __tablename__ = "event_waitlist"
+    __table_args__ = (UniqueConstraint("event_id", "user_id", name="uq_event_waitlist_user"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    event: Mapped[Event] = relationship(back_populates="waitlist")
+    user: Mapped[User] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
+    message: Mapped[str] = mapped_column(String(500))
+    read: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
