@@ -3,6 +3,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+import csv
+import io
+
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import Event, EventRegistration, User
@@ -110,6 +113,42 @@ def cancel_registration(event_id: int, db: Session = Depends(get_db), user: User
     db.delete(registration)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{event_id}/registrations.csv")
+def export_registrations_csv(
+    event_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    """Export an event's attendee list as CSV. Restricted to the organizer."""
+    event = _event_or_404(db, event_id)
+    if event.organizer_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can export registrations")
+
+    registrations = db.execute(
+        select(EventRegistration)
+        .options(joinedload(EventRegistration.user))
+        .where(EventRegistration.event_id == event_id)
+        .order_by(EventRegistration.registered_at)
+    ).scalars().all()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["user_id", "username", "email", "registered_at"])
+    for registration in registrations:
+        attendee = registration.user
+        writer.writerow([
+            registration.user_id,
+            attendee.username if attendee else "",
+            attendee.email if attendee else "",
+            registration.registered_at.isoformat() if registration.registered_at else "",
+        ])
+
+    filename = f"event-{event_id}-registrations.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _with_count(event: Event) -> dict:
