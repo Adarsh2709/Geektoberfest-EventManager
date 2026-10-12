@@ -19,6 +19,7 @@ Health Check: https://eventmanager-oocc.onrender.com/health
 - Create, update, and delete your own events
 - Register for events, see your registrations, and cancel your spot
 - Enforce event capacity and prevent duplicate registrations
+- Join a waitlist when an event is full; the first person in line is moved in automatically when a spot opens, and the organizer is notified
 
 ## Tech stack
 
@@ -93,7 +94,20 @@ Vite serves the app at <http://localhost:5173>. The frontend uses `http://localh
 | DELETE | `/events/{id}` | Delete your event |
 | POST | `/events/{id}/register` | Register for an event |
 | DELETE | `/events/{id}/register` | Cancel a registration |
-| GET | `/users/me/events` | View events you're attending and hosting |
+| GET | `/events/{id}/registrations.csv` | Export attendees as CSV (organizer only) |
+| POST | `/events/{id}/waitlist` | Join the waitlist (only when the event is full) |
+| DELETE | `/events/{id}/waitlist` | Leave the waitlist |
+| GET | `/events/{id}/waitlist` | View the waitlist in queue order (organizer only) |
+| GET | `/users/me/events` | View events you're attending, hosting, and waitlisted for |
+| GET | `/users/me/notifications` | View your notifications |
+| POST | `/users/me/notifications/read` | Mark all your notifications as read |
+
+### Waitlist
+
+- A waitlist can only be joined while an event is at capacity, and only once per person. Registered attendees cannot join.
+- The queue is first come, first served. Your position is shown on the event page and under "My events".
+- When a registration is cancelled, or the organizer raises the capacity, waitlisted people are registered in queue order until the event is full again.
+- The promoted attendee and the organizer each get an in-app notification (shown on "My events"). Existing databases need `alembic upgrade head` to add the new tables.
 
 ## Contributing
 

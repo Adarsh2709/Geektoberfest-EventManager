@@ -64,12 +64,12 @@ function AuthPage({ mode, onLogin }) {
 function EventDetails({ user }) {
   const { eventId } = useParams()
   const navigate = useNavigate()
-  const [event, setEvent] = useState(null); const [registered, setRegistered] = useState(false)
+  const [event, setEvent] = useState(null); const [registered, setRegistered] = useState(false); const [waitlistPosition, setWaitlistPosition] = useState(null)
   const [error, setError] = useState(''); const [message, setMessage] = useState('')
   async function load() {
     try {
       const item = await api(`/events/${eventId}`); setEvent(item)
-      if (user) { const mine = await api('/users/me/events'); setRegistered(mine.attending.some((e) => e.id === item.id)) }
+      if (user) { const mine = await api('/users/me/events'); setRegistered(mine.attending.some((e) => e.id === item.id)); setWaitlistPosition(mine.waitlisted.find((e) => e.id === item.id)?.waitlist_position ?? null) }
     } catch (err) { setError(err.message) }
   }
   useEffect(() => { load() }, [eventId, user])
@@ -82,11 +82,25 @@ function EventDetails({ user }) {
       await load()
     } catch (err) { setError(err.message) }
   }
+  async function toggleWaitlist() {
+    if (!user) return navigate('/login')
+    setError(''); setMessage('')
+    const leaving = waitlistPosition !== null
+    try {
+      const result = await api(`/events/${eventId}/waitlist`, { method: leaving ? 'DELETE' : 'POST' })
+      setMessage(leaving ? 'You left the waitlist.' : `You’re on the waitlist at position ${result.position}. We’ll move you in if a spot opens.`)
+      await load()
+    } catch (err) { setError(err.message) }
+  }
+  const full = event && event.attendee_count >= event.capacity
   if (error && !event) return <main className="page-content"><p className="notice notice-error">{error}</p><Link to="/">Back to events</Link></main>
   if (!event) return <main className="page-content"><p className="muted">Loading event…</p></main>
   return <main className="detail-wrap"><Link to="/" className="back-link">← All events</Link><article className="detail-card"><div className="detail-banner"><span className="eyebrow">YOU'RE INVITED</span><span className="detail-date">{dateLabel(event.start_time)}</span></div><div className="detail-body"><span className="eyebrow">{event.location}</span><h1>{event.title}</h1><p className="detail-description">{event.description}</p><div className="detail-facts"><div><span>WHEN</span><strong>{dateLabel(event.start_time)}</strong><p>{timeLabel(event.start_time)} – {timeLabel(event.end_time)}</p></div><div><span>WHERE</span><strong>{event.location}</strong><p>Come as you are</p></div><div><span>HOSTED BY</span><strong>{event.organizer.username}</strong><p>Your event host</p></div></div><div className="capacity-row"><span>{event.attendee_count} of {event.capacity} spots taken</span><div className="capacity-track"><i style={{ width: `${Math.min(100, (event.attendee_count / event.capacity) * 100)}%` }} /></div></div>
       {error && <p className="notice notice-error">{error}</p>}{message && <p className="notice notice-success">{message}</p>}
-      <button className="button" onClick={toggleRegistration} disabled={!registered && event.attendee_count >= event.capacity}>{registered ? 'Cancel my spot' : event.attendee_count >= event.capacity ? 'All spots filled' : user ? 'Save my spot' : 'Log in to join'}</button>
+      {event.waitlist_count > 0 && <p className="muted">{event.waitlist_count} on the waitlist</p>}
+      {!registered && full
+        ? <button className="button" onClick={toggleWaitlist}>{waitlistPosition !== null ? `Leave waitlist (you’re #${waitlistPosition})` : user ? 'Join the waitlist' : 'Log in to join the waitlist'}</button>
+        : <button className="button" onClick={toggleRegistration}>{registered ? 'Cancel my spot' : user ? 'Save my spot' : 'Log in to join'}</button>}
     </div></article></main>
 }
 
@@ -114,8 +128,9 @@ function EditEvent() {
 
 function MyEvents() {
   const navigate = useNavigate()
-  const [data, setData] = useState({ attending: [], organized: [] }); const [error, setError] = useState('')
-  async function load() { try { setData(await api('/users/me/events')) } catch (err) { setError(err.message) } }
+  const [data, setData] = useState({ attending: [], organized: [], waitlisted: [] }); const [notifications, setNotifications] = useState([]); const [error, setError] = useState('')
+  async function load() { try { setData(await api('/users/me/events')); setNotifications(await api('/users/me/notifications')) } catch (err) { setError(err.message) } }
+  async function markRead() { try { await api('/users/me/notifications/read', { method: 'POST' }); await load() } catch (err) { setError(err.message) } }
   useEffect(() => { load() }, [])
   async function deleteEvent(event) {
     if (!window.confirm(`Delete “${event.title}”? This also removes its registrations.`)) return
@@ -123,7 +138,9 @@ function MyEvents() {
     catch (err) { setError(err.message) }
   }
   return <main className="page-content my-events"><span className="eyebrow">YOUR LITTLE BLACK BOOK</span><h1>My events</h1>{error && <p className="notice notice-error">{error}</p>}
+    {notifications.length > 0 && <section><div className="section-heading"><h2>Notifications</h2>{notifications.some((n) => !n.read) && <button className="button button-small button-quiet" onClick={markRead}>Mark all read</button>}</div>{notifications.map((n) => <p className={`notice ${n.read ? '' : 'notice-success'}`} key={n.id}>{n.message}</p>)}</section>}
     <section><div className="section-heading"><h2>I'm attending</h2></div>{data.attending.length ? <div className="event-grid">{data.attending.map((event) => <EventCard event={event} key={event.id} />)}</div> : <p className="muted">No plans on the books yet. Find something to join.</p>}</section>
+    {data.waitlisted.length > 0 && <section><div className="section-heading"><h2>I'm on the waitlist</h2></div><div className="event-grid">{data.waitlisted.map((event) => <EventCard event={event} key={event.id} actions={<span>You’re #{event.waitlist_position} in line</span>} />)}</div></section>}
     <section><div className="section-heading"><h2>I'm hosting</h2></div>{data.organized.length ? <div className="event-grid">{data.organized.map((event) => <EventCard event={event} key={event.id} actions={<><button onClick={() => navigate(`/events/${event.id}/edit`)}>Edit</button><button className="delete-action" onClick={() => deleteEvent(event)}>Delete</button></>} />)}</div> : <p className="muted">Nothing on the calendar yet. Host your first event!</p>}</section>
   </main>
 }

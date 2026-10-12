@@ -59,8 +59,27 @@ class EventPublic(BaseModel):
     organizer_id: int
     organizer: UserPublic
     attendee_count: int
+    waitlist_count: int = 0
+    waitlist_position: int | None = None
+
+
+class WaitlistEntryPublic(BaseModel):
+    position: int
+    user: UserPublic
+    joined_at: datetime
+
+
+class NotificationPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    event_id: int | None
+    message: str
+    read: bool
+    created_at: datetime
 
 
 class MyEvents(BaseModel):
     attending: list[EventPublic]
     organized: list[EventPublic]
+    waitlisted: list[EventPublic] = []
