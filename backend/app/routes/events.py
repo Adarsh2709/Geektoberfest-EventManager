@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 import csv
 import io
+from datetime import datetime, timezone
 
 from app.auth import get_current_user
 from app.database import get_db
@@ -25,20 +26,50 @@ def _event_or_404(db: Session, event_id: int) -> Event:
     return event
 
 
+def _filter_clause(filter_mode: str):
+    now = datetime.now(timezone.utc)
+    if filter_mode == "upcoming":
+        return Event.end_time >= now
+    elif filter_mode == "past":
+        return Event.end_time < now
+    return None
+
+
+def _order_clause(sort: str):
+    if sort == "latest":
+        return Event.start_time.desc().nulls_last()
+    return Event.start_time.asc().nulls_last()
+
+
 @router.get("", response_model=list[EventPublic])
-def list_events(db: Session = Depends(get_db)):
-    events = db.execute(_event_query().order_by(Event.start_time)).unique().scalars().all()
+def list_events(
+    filter: str = Query("all", pattern="^(all|upcoming|past)$"),
+    sort: str = Query("soonest", pattern="^(soonest|latest)$"),
+    db: Session = Depends(get_db),
+):
+    query = _event_query()
+    cond = _filter_clause(filter)
+    if cond is not None:
+        query = query.where(cond)
+    events = db.execute(query.order_by(_order_clause(sort))).unique().scalars().all()
     return [_with_count(event) for event in events]
 
 
 @router.get("/search", response_model=list[EventPublic])
-def search_events(q: str = Query(min_length=1, max_length=100), db: Session = Depends(get_db)):
+def search_events(
+    q: str = Query(min_length=1, max_length=100),
+    filter: str = Query("all", pattern="^(all|upcoming|past)$"),
+    sort: str = Query("soonest", pattern="^(soonest|latest)$"),
+    db: Session = Depends(get_db),
+):
     term = f"%{q.strip()}%"
-    events = db.execute(
-        _event_query().where(
-            or_(Event.title.ilike(term), Event.description.ilike(term), Event.location.ilike(term))
-        ).order_by(Event.start_time)
-    ).unique().scalars().all()
+    query = _event_query().where(
+        or_(Event.title.ilike(term), Event.description.ilike(term), Event.location.ilike(term))
+    )
+    cond = _filter_clause(filter)
+    if cond is not None:
+        query = query.where(cond)
+    events = db.execute(query.order_by(_order_clause(sort))).unique().scalars().all()
     return [_with_count(event) for event in events]
 
 
