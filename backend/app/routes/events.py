@@ -60,6 +60,8 @@ def create_event(data: EventCreate, db: Session = Depends(get_db), user: User = 
 def update_event(
     event_id: int, data: EventUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    # Lock the row first so the capacity check and the save see the same registrations that register/cancel use.
+    db.execute(select(Event.id).where(Event.id == event_id).with_for_update())
     event = _event_or_404(db, event_id)
     if event.organizer_id != user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can update this event")
