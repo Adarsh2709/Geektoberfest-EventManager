@@ -90,7 +90,7 @@ Vite serves the app at <http://localhost:5173>. The frontend uses `http://localh
 | GET | `/events/search?q=...` | Search events |
 | GET | `/events/{id}` | View an event |
 | POST | `/events` | Create an event (signed in) |
-| PUT | `/events/{id}` | Update your event |
+| PUT | `/events/{id}` | Update your event (organizer only; capacity cannot go below current registrations) |
 | DELETE | `/events/{id}` | Delete your event |
 | POST | `/events/{id}/register` | Register for an event |
 | DELETE | `/events/{id}/register` | Cancel a registration |

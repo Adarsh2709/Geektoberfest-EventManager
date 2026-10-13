@@ -16,26 +16,27 @@ function Home() {
   const [events, setEvents] = useState([])
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('upcoming')
+  const [sort, setSort] = useState('soonest')
   const [error, setError] = useState('')
 
-  async function fetchEvents(currentFilter = filter, currentQuery = query) {
+  async function fetchEvents(currentFilter = filter, currentSort = sort, currentQuery = query) {
     try {
       const q = currentQuery.trim()
       const url = q
-        ? `/events/search?q=${encodeURIComponent(q)}&filter=${currentFilter}`
-        : `/events?filter=${currentFilter}`
+        ? `/events/search?q=${encodeURIComponent(q)}&filter=${currentFilter}&sort=${currentSort}`
+        : `/events?filter=${currentFilter}&sort=${currentSort}`
       setEvents(await api(url))
     } catch (err) {
       setError(err.message)
     }
   }
 
-  useEffect(() => { fetchEvents(filter, query) }, [filter])
+  useEffect(() => { fetchEvents(filter, sort, query) }, [filter, sort])
 
   async function search(event) {
     event.preventDefault()
     setError('')
-    await fetchEvents(filter, query)
+    await fetchEvents(filter, sort, query)
   }
 
   const headingText = filter === 'upcoming' ? 'Coming up' : filter === 'past' ? 'Past events' : 'All events'
@@ -44,10 +45,19 @@ function Home() {
     <form className="search-form" onSubmit={search}><span aria-hidden="true">⌕</span><input aria-label="Search events" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search events, places, ideas..." /><button className="button">Search</button></form>
   </div><div className="hero-art" aria-hidden="true"><div className="sun"></div><div className="art-note note-one">✳</div><div className="art-note note-two">♫</div><div className="art-card"><span>YOUR PLANS, SORTED</span><strong>Good things<br />are happening.</strong><div className="art-card-bottom"><i></i><i></i><i></i><small>and you're invited</small></div></div><div className="art-orbit"></div></div></section>
     <main className="page-content"><div className="section-heading"><div><span className="eyebrow">THE GOOD STUFF</span><h2>{headingText}</h2></div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <button type="button" className={`button button-small ${filter === 'upcoming' ? '' : 'button-quiet'}`} onClick={() => setFilter('upcoming')}>Upcoming</button>
-        <button type="button" className={`button button-small ${filter === 'past' ? '' : 'button-quiet'}`} onClick={() => setFilter('past')}>Past</button>
-        <button type="button" className={`button button-small ${filter === 'all' ? '' : 'button-quiet'}`} onClick={() => setFilter('all')}>All</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button type="button" className={`button button-small ${filter === 'upcoming' ? '' : 'button-quiet'}`} onClick={() => setFilter('upcoming')}>Upcoming</button>
+          <button type="button" className={`button button-small ${filter === 'past' ? '' : 'button-quiet'}`} onClick={() => setFilter('past')}>Past</button>
+          <button type="button" className={`button button-small ${filter === 'all' ? '' : 'button-quiet'}`} onClick={() => setFilter('all')}>All</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label htmlFor="sort-select" className="muted" style={{ fontSize: '0.85rem' }}>Sort by:</label>
+          <select id="sort-select" value={sort} onChange={(e) => setSort(e.target.value)} style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid #ccc', background: '#fff', fontSize: '0.85rem' }}>
+            <option value="soonest">Soonest first</option>
+            <option value="latest">Latest first</option>
+          </select>
+        </div>
         <span className="event-total" style={{ marginLeft: '0.5rem' }}>{events.length} {events.length === 1 ? 'event' : 'events'}</span>
       </div>
     </div>
@@ -135,7 +145,7 @@ function CreateEvent() {
   return <main className="form-page"><Link to="/" className="back-link">← Back home</Link><div className="form-heading"><span className="eyebrow">HOST SOMETHING</span><h1>Put it on the calendar.</h1><p className="muted">A good gathering starts with an invitation.</p></div>{error && <p className="notice notice-error">{error}</p>}<EventForm onSubmit={save} submitLabel="Create event" /></main>
 }
 
-function EditEvent() {
+function EditEvent({ user }) {
   const { eventId } = useParams(); const navigate = useNavigate()
   const [event, setEvent] = useState(null); const [error, setError] = useState('')
   useEffect(() => { api(`/events/${eventId}`).then(setEvent).catch((err) => setError(err.message)) }, [eventId])
@@ -144,7 +154,7 @@ function EditEvent() {
     catch (err) { setError(err.message) }
   }
   return <main className="form-page"><Link to="/my-events" className="back-link">← My events</Link><div className="form-heading"><span className="eyebrow">YOUR EVENT</span><h1>Make a change.</h1><p className="muted">Update the details for your gathering.</p></div>
-    {error && <p className="notice notice-error">{error}</p>}{event ? <EventForm onSubmit={save} submitLabel="Save changes" initialValues={event} /> : !error && <p className="muted">Loading event…</p>}
+    {error && <p className="notice notice-error">{error}</p>}{event && event.organizer_id !== user.id ? <p className="notice notice-error">Only the organizer can edit this event.</p> : event ? <EventForm onSubmit={save} submitLabel="Save changes" initialValues={event} /> : !error && <p className="muted">Loading event…</p>}
   </main>
 }
 
@@ -182,7 +192,7 @@ export default function App() {
     <Route path="/login" element={user ? <Navigate to="/" /> : <AuthPage mode="login" onLogin={refreshUser} />} />
     <Route path="/register" element={user ? <Navigate to="/" /> : <AuthPage mode="register" onLogin={refreshUser} />} />
     <Route path="/events/:eventId" element={<EventDetails user={user} />} />
-    <Route path="/events/:eventId/edit" element={user ? <EditEvent /> : <Navigate to="/login" />} />
+    <Route path="/events/:eventId/edit" element={user ? <EditEvent user={user} /> : <Navigate to="/login" />} />
     <Route path="/create" element={user ? <CreateEvent /> : <Navigate to="/login" />} />
     <Route path="/my-events" element={user ? <MyEvents /> : <Navigate to="/login" />} />
     <Route path="*" element={<main className="page-content"><h1>That page wandered off.</h1><Link to="/">Back home</Link></main>} />
