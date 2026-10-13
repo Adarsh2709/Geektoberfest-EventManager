@@ -25,19 +25,29 @@ def _event_or_404(db: Session, event_id: int) -> Event:
     return event
 
 
+def _order_clause(sort: str):
+    if sort == "latest":
+        return Event.start_time.desc().nulls_last()
+    return Event.start_time.asc().nulls_last()
+
+
 @router.get("", response_model=list[EventPublic])
-def list_events(db: Session = Depends(get_db)):
-    events = db.execute(_event_query().order_by(Event.start_time)).unique().scalars().all()
+def list_events(sort: str = Query("soonest", pattern="^(soonest|latest)$"), db: Session = Depends(get_db)):
+    events = db.execute(_event_query().order_by(_order_clause(sort))).unique().scalars().all()
     return [_with_count(event) for event in events]
 
 
 @router.get("/search", response_model=list[EventPublic])
-def search_events(q: str = Query(min_length=1, max_length=100), db: Session = Depends(get_db)):
+def search_events(
+    q: str = Query(min_length=1, max_length=100),
+    sort: str = Query("soonest", pattern="^(soonest|latest)$"),
+    db: Session = Depends(get_db),
+):
     term = f"%{q.strip()}%"
     events = db.execute(
         _event_query().where(
             or_(Event.title.ilike(term), Event.description.ilike(term), Event.location.ilike(term))
-        ).order_by(Event.start_time)
+        ).order_by(_order_clause(sort))
     ).unique().scalars().all()
     return [_with_count(event) for event in events]
 
