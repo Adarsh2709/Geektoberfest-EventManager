@@ -7,7 +7,15 @@ export async function api(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (response.status === 204) return null
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Something went wrong')
+  if (!response.ok) {
+    let message = 'Something went wrong'
+    if (typeof data.detail === 'string') {
+      message = data.detail
+    } else if (Array.isArray(data.detail) && data.detail.length > 0) {
+      message = data.detail.map((d) => d.msg || d.message).filter(Boolean).join(', ') || message
+    }
+    throw new Error(message)
+  }
   return data
 }
 

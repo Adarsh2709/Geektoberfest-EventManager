@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class UserCreate(BaseModel):
@@ -33,6 +33,15 @@ class EventCreate(BaseModel):
     start_time: datetime
     end_time: datetime
     capacity: int = Field(gt=0, le=100000)
+
+    @field_validator("title", "location", mode="before")
+    @classmethod
+    def validate_non_blank(cls, value: str) -> str:
+        if isinstance(value, str):
+            value = value.strip()
+            if len(value) < 2:
+                raise ValueError("Must contain at least 2 non-whitespace characters")
+        return value
 
     @model_validator(mode="after")
     def end_after_start(self):
