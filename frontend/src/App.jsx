@@ -135,7 +135,7 @@ function CreateEvent() {
   return <main className="form-page"><Link to="/" className="back-link">← Back home</Link><div className="form-heading"><span className="eyebrow">HOST SOMETHING</span><h1>Put it on the calendar.</h1><p className="muted">A good gathering starts with an invitation.</p></div>{error && <p className="notice notice-error">{error}</p>}<EventForm onSubmit={save} submitLabel="Create event" /></main>
 }
 
-function EditEvent() {
+function EditEvent({ user }) {
   const { eventId } = useParams(); const navigate = useNavigate()
   const [event, setEvent] = useState(null); const [error, setError] = useState('')
   useEffect(() => { api(`/events/${eventId}`).then(setEvent).catch((err) => setError(err.message)) }, [eventId])
@@ -144,7 +144,7 @@ function EditEvent() {
     catch (err) { setError(err.message) }
   }
   return <main className="form-page"><Link to="/my-events" className="back-link">← My events</Link><div className="form-heading"><span className="eyebrow">YOUR EVENT</span><h1>Make a change.</h1><p className="muted">Update the details for your gathering.</p></div>
-    {error && <p className="notice notice-error">{error}</p>}{event ? <EventForm onSubmit={save} submitLabel="Save changes" initialValues={event} /> : !error && <p className="muted">Loading event…</p>}
+    {error && <p className="notice notice-error">{error}</p>}{event && event.organizer_id !== user.id ? <p className="notice notice-error">Only the organizer can edit this event.</p> : event ? <EventForm onSubmit={save} submitLabel="Save changes" initialValues={event} /> : !error && <p className="muted">Loading event…</p>}
   </main>
 }
 
@@ -182,7 +182,7 @@ export default function App() {
     <Route path="/login" element={user ? <Navigate to="/" /> : <AuthPage mode="login" onLogin={refreshUser} />} />
     <Route path="/register" element={user ? <Navigate to="/" /> : <AuthPage mode="register" onLogin={refreshUser} />} />
     <Route path="/events/:eventId" element={<EventDetails user={user} />} />
-    <Route path="/events/:eventId/edit" element={user ? <EditEvent /> : <Navigate to="/login" />} />
+    <Route path="/events/:eventId/edit" element={user ? <EditEvent user={user} /> : <Navigate to="/login" />} />
     <Route path="/create" element={user ? <CreateEvent /> : <Navigate to="/login" />} />
     <Route path="/my-events" element={user ? <MyEvents /> : <Navigate to="/login" />} />
     <Route path="*" element={<main className="page-content"><h1>That page wandered off.</h1><Link to="/">Back home</Link></main>} />
