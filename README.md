@@ -92,7 +92,7 @@ Vite serves the app at <http://localhost:5173>. The frontend uses `http://localh
 | POST | `/events` | Create an event (signed in) |
 | PUT | `/events/{id}` | Update your event (organizer only; capacity cannot go below current registrations) |
 | DELETE | `/events/{id}` | Delete your event |
-| POST | `/events/{id}/register` | Register for an event |
+| POST | `/events/{id}/register` | Register for an event (capacity enforced; rejects when full) |
 | DELETE | `/events/{id}/register` | Cancel a registration |
 | GET | `/events/{id}/registrations.csv` | Export attendees as CSV (organizer only) |
 | POST | `/events/{id}/waitlist` | Join the waitlist (only when the event is full) |
