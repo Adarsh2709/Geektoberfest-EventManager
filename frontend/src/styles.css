@@ -5,3 +5,7 @@
 .field-error{color:#b83a22;font-size:11px;font-weight:600;margin-top:2px}
 .input-error{border-color:#e06a55!important;background:#fff8f6!important}
 
+.search-clear-button{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:6px 10px;font-size:14px;line-height:1;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:color .15s,background .15s}
+.search-clear-button:hover,.search-clear-button:focus-visible{color:var(--ink);background:#eef2ed;outline:none}
+
+

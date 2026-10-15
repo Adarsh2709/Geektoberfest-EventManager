@@ -39,10 +39,25 @@ function Home() {
     await fetchEvents(filter, sort, query)
   }
 
+  async function clearSearch() {
+    setQuery('')
+    setError('')
+    await fetchEvents(filter, sort, '')
+  }
+
   const headingText = filter === 'upcoming' ? 'Coming up' : filter === 'past' ? 'Past events' : 'All events'
   return <><section className="hero"><div className="hero-copy"><span className="eyebrow">MAKE ROOM FOR SOMETHING GOOD</span>
     <h1>Your next favorite<br />memory starts here.</h1><p>Find people, ideas, and moments worth showing up for.</p>
-    <form className="search-form" onSubmit={search}><span aria-hidden="true">⌕</span><input aria-label="Search events" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search events, places, ideas..." /><button className="button">Search</button></form>
+    <form className="search-form" onSubmit={search}>
+      <span aria-hidden="true">⌕</span>
+      <input aria-label="Search events" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search events, places, ideas..." />
+      {query && (
+        <button type="button" className="search-clear-button" aria-label="Clear search" onClick={clearSearch}>
+          ✕
+        </button>
+      )}
+      <button className="button">Search</button>
+    </form>
   </div><div className="hero-art" aria-hidden="true"><div className="sun"></div><div className="art-note note-one">✳</div><div className="art-note note-two">♫</div><div className="art-card"><span>YOUR PLANS, SORTED</span><strong>Good things<br />are happening.</strong><div className="art-card-bottom"><i></i><i></i><i></i><small>and you're invited</small></div></div><div className="art-orbit"></div></div></section>
     <main className="page-content"><div className="section-heading"><div><span className="eyebrow">THE GOOD STUFF</span><h2>{headingText}</h2></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
