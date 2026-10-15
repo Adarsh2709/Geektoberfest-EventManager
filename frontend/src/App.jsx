@@ -112,7 +112,10 @@ function EventDetails({ user }) {
       await api(`/events/${eventId}/register`, { method: registered ? 'DELETE' : 'POST' })
       setRegistered(!registered); setMessage(registered ? 'Your spot has been released.' : 'You’re on the list!')
       await load()
-    } catch (err) { setError(err.message) }
+    } catch (err) {
+      setError(err.message)
+      await load()
+    }
   }
   async function toggleWaitlist() {
     if (!user) return navigate('/login')

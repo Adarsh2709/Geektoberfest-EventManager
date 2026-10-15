@@ -8,7 +8,7 @@ from app.routes import auth, events, users
 
 load_dotenv()
 
-
+app = FastAPI(title="Event Hub API", description="A simple event creation and registration API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
