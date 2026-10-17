@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session, joinedload
 
 import csv
 import io
+import threading
+from datetime import datetime, timezone
 
 from app.auth import get_current_user
 from app.database import get_db
@@ -12,6 +14,7 @@ from app.models import Event, EventRegistration, Notification, User, WaitlistEnt
 from app.schemas import EventCreate, EventPublic, EventUpdate, WaitlistEntryPublic
 
 router = APIRouter(prefix="/events", tags=["events"])
+_registration_lock = threading.Lock()
 
 
 def _event_query():
@@ -25,20 +28,50 @@ def _event_or_404(db: Session, event_id: int) -> Event:
     return event
 
 
+def _filter_clause(filter_mode: str):
+    now = datetime.now(timezone.utc)
+    if filter_mode == "upcoming":
+        return Event.end_time >= now
+    elif filter_mode == "past":
+        return Event.end_time < now
+    return None
+
+
+def _order_clause(sort: str):
+    if sort == "latest":
+        return Event.start_time.desc().nulls_last()
+    return Event.start_time.asc().nulls_last()
+
+
 @router.get("", response_model=list[EventPublic])
-def list_events(db: Session = Depends(get_db)):
-    events = db.execute(_event_query().order_by(Event.start_time)).unique().scalars().all()
+def list_events(
+    filter: str = Query("all", pattern="^(all|upcoming|past)$"),
+    sort: str = Query("soonest", pattern="^(soonest|latest)$"),
+    db: Session = Depends(get_db),
+):
+    query = _event_query()
+    cond = _filter_clause(filter)
+    if cond is not None:
+        query = query.where(cond)
+    events = db.execute(query.order_by(_order_clause(sort))).unique().scalars().all()
     return [_with_count(event) for event in events]
 
 
 @router.get("/search", response_model=list[EventPublic])
-def search_events(q: str = Query(min_length=1, max_length=100), db: Session = Depends(get_db)):
+def search_events(
+    q: str = Query(min_length=1, max_length=100),
+    filter: str = Query("all", pattern="^(all|upcoming|past)$"),
+    sort: str = Query("soonest", pattern="^(soonest|latest)$"),
+    db: Session = Depends(get_db),
+):
     term = f"%{q.strip()}%"
-    events = db.execute(
-        _event_query().where(
-            or_(Event.title.ilike(term), Event.description.ilike(term), Event.location.ilike(term))
-        ).order_by(Event.start_time)
-    ).unique().scalars().all()
+    query = _event_query().where(
+        or_(Event.title.ilike(term), Event.description.ilike(term), Event.location.ilike(term))
+    )
+    cond = _filter_clause(filter)
+    if cond is not None:
+        query = query.where(cond)
+    events = db.execute(query.order_by(_order_clause(sort))).unique().scalars().all()
     return [_with_count(event) for event in events]
 
 
@@ -60,18 +93,21 @@ def create_event(data: EventCreate, db: Session = Depends(get_db), user: User = 
 def update_event(
     event_id: int, data: EventUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    event = _event_or_404(db, event_id)
-    if event.organizer_id != user.id:
-        raise HTTPException(status_code=403, detail="Only the organizer can update this event")
-    updates = data.model_dump()
-    if updates["capacity"] < len(event.registrations):
-        raise HTTPException(status_code=400, detail="Capacity cannot be lower than current registrations")
-    for field, value in updates.items():
-        setattr(event, field, value)
-    _promote_from_waitlist(db, event)
-    db.commit()
-    db.expire(event)
-    return _with_count(_event_or_404(db, event_id))
+    with _registration_lock:
+        # Lock the row first so the capacity check and the save see the same registrations that register/cancel use.
+        db.execute(select(Event.id).where(Event.id == event_id).with_for_update())
+        event = _event_or_404(db, event_id)
+        if event.organizer_id != user.id:
+            raise HTTPException(status_code=403, detail="Only the organizer can update this event")
+        updates = data.model_dump()
+        if updates["capacity"] < len(event.registrations):
+            raise HTTPException(status_code=400, detail="Capacity cannot be lower than current registrations")
+        for field, value in updates.items():
+            setattr(event, field, value)
+        _promote_from_waitlist(db, event)
+        db.commit()
+        db.expire(event)
+        return _with_count(_event_or_404(db, event_id))
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -86,64 +122,69 @@ def delete_event(event_id: int, db: Session = Depends(get_db), user: User = Depe
 
 @router.post("/{event_id}/register", status_code=status.HTTP_201_CREATED)
 def register_for_event(event_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    event = db.execute(select(Event).where(Event.id == event_id).with_for_update()).scalar_one_or_none()
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    if db.scalar(select(EventRegistration.id).where(
-        EventRegistration.event_id == event_id, EventRegistration.user_id == user.id
-    )):
-        raise HTTPException(status_code=409, detail="You are already registered for this event")
-    count = db.scalar(select(func.count()).select_from(EventRegistration).where(EventRegistration.event_id == event_id))
-    if count >= event.capacity:
-        raise HTTPException(status_code=409, detail="This event is full")
-    db.add(EventRegistration(event_id=event_id, user_id=user.id))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="You are already registered for this event")
-    return {"message": "Registration successful"}
+    with _registration_lock:
+        event = db.execute(select(Event).where(Event.id == event_id).with_for_update()).scalar_one_or_none()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        if db.scalar(select(EventRegistration.id).where(
+            EventRegistration.event_id == event_id, EventRegistration.user_id == user.id
+        )):
+            raise HTTPException(status_code=409, detail="You are already registered for this event")
+        count = _registration_count(db, event_id)
+        if count >= event.capacity:
+            raise HTTPException(status_code=409, detail="This event is full")
+        db.add(EventRegistration(event_id=event_id, user_id=user.id))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="You are already registered for this event")
+        return {"message": "Registration successful"}
 
 
 @router.delete("/{event_id}/register", status_code=status.HTTP_204_NO_CONTENT)
 def cancel_registration(event_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    registration = db.scalar(select(EventRegistration).where(
-        EventRegistration.event_id == event_id, EventRegistration.user_id == user.id
-    ))
-    if not registration:
-        raise HTTPException(status_code=404, detail="You are not registered for this event")
-    event = db.execute(select(Event).where(Event.id == event_id).with_for_update()).scalar_one()
-    was_full = _registration_count(db, event_id) >= event.capacity
-    db.delete(registration)
-    db.flush()
-    if was_full:
-        _promote_from_waitlist(db, event, freed_by=user)
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    with _registration_lock:
+        registration = db.scalar(select(EventRegistration).where(
+            EventRegistration.event_id == event_id, EventRegistration.user_id == user.id
+        ))
+        if not registration:
+            raise HTTPException(status_code=404, detail="You are not registered for this event")
+        event = db.execute(select(Event).where(Event.id == event_id).with_for_update()).scalar_one()
+        was_full = _registration_count(db, event_id) >= event.capacity
+        db.delete(registration)
+        db.flush()
+        if was_full:
+            _promote_from_waitlist(db, event, freed_by=user)
+        db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 
 @router.post("/{event_id}/waitlist", status_code=status.HTTP_201_CREATED)
 def join_waitlist(event_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    event = db.execute(select(Event).where(Event.id == event_id).with_for_update()).scalar_one_or_none()
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    if db.scalar(select(EventRegistration.id).where(
-        EventRegistration.event_id == event_id, EventRegistration.user_id == user.id
-    )):
-        raise HTTPException(status_code=409, detail="You are already registered for this event")
-    if _registration_count(db, event_id) < event.capacity:
-        raise HTTPException(status_code=409, detail="This event still has spots; register instead")
-    if db.scalar(select(WaitlistEntry.id).where(
-        WaitlistEntry.event_id == event_id, WaitlistEntry.user_id == user.id
-    )):
-        raise HTTPException(status_code=409, detail="You are already on the waitlist for this event")
-    db.add(WaitlistEntry(event_id=event_id, user_id=user.id))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="You are already on the waitlist for this event")
-    return {"message": "You joined the waitlist", "position": _waitlist_position(db, event_id, user.id)}
+    with _registration_lock:
+        event = db.execute(select(Event).where(Event.id == event_id).with_for_update()).scalar_one_or_none()
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        if db.scalar(select(EventRegistration.id).where(
+            EventRegistration.event_id == event_id, EventRegistration.user_id == user.id
+        )):
+            raise HTTPException(status_code=409, detail="You are already registered for this event")
+        if _registration_count(db, event_id) < event.capacity:
+            raise HTTPException(status_code=409, detail="This event still has spots; register instead")
+        if db.scalar(select(WaitlistEntry.id).where(
+            WaitlistEntry.event_id == event_id, WaitlistEntry.user_id == user.id
+        )):
+            raise HTTPException(status_code=409, detail="You are already on the waitlist for this event")
+        db.add(WaitlistEntry(event_id=event_id, user_id=user.id))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="You are already on the waitlist for this event")
+        return {"message": "You joined the waitlist", "position": _waitlist_position(db, event_id, user.id)}
+
 
 
 @router.delete("/{event_id}/waitlist", status_code=status.HTTP_204_NO_CONTENT)
